@@ -17,17 +17,23 @@
 
 package org.apache.dolphinscheduler.server.log;
 
-
-import org.apache.dolphinscheduler.common.Constants;
 import org.apache.dolphinscheduler.remote.NettyRemotingServer;
 import org.apache.dolphinscheduler.remote.command.CommandType;
 import org.apache.dolphinscheduler.remote.config.NettyServerConfig;
+import org.apache.dolphinscheduler.server.worker.config.WorkerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.annotation.ComponentScan;
+
+import javax.annotation.PostConstruct;
 
 /**
  *  logger server
  */
+@ComponentScan("org.apache.dolphinscheduler")
 public class LoggerServer {
 
     private static  final Logger logger = LoggerFactory.getLogger(LoggerServer.class);
@@ -35,49 +41,44 @@ public class LoggerServer {
     /**
      *  netty server
      */
-    private final NettyRemotingServer server;
+    private NettyRemotingServer server;
 
-    /**
-     *  netty server config
-     */
-    private final NettyServerConfig serverConfig;
-
-    /**
-     *  loggger request processor
-     */
-    private final LoggerRequestProcessor requestProcessor;
-
-    public LoggerServer(){
-        this.serverConfig = new NettyServerConfig();
-        this.serverConfig.setListenPort(Constants.RPC_PORT);
-        this.server = new NettyRemotingServer(serverConfig);
-        this.requestProcessor = new LoggerRequestProcessor();
-        this.server.registerProcessor(CommandType.GET_LOG_BYTES_REQUEST, requestProcessor, requestProcessor.getExecutor());
-        this.server.registerProcessor(CommandType.ROLL_VIEW_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
-        this.server.registerProcessor(CommandType.VIEW_WHOLE_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
-    }
+    @Autowired
+    private WorkerConfig workerConfig;
 
     /**
      * main launches the server from the command line.
      * @param args arguments
      */
     public static void main(String[] args)  {
-        final LoggerServer server = new LoggerServer();
-        server.start();
+        new SpringApplicationBuilder(LoggerServer.class).web(WebApplicationType.NONE).run(args);
     }
 
-    /**
-     * server start
-     */
-    public void start()  {
+    @PostConstruct
+    public void run(){
+        logger.info("logger server started, listening on port : {}" , workerConfig.getLoggerPort());
+
+        //init remoting server
+        NettyServerConfig serverConfig = new NettyServerConfig();
+        serverConfig.setListenPort(workerConfig.getLoggerPort());
+        this.server = new NettyRemotingServer(serverConfig);
+        LoggerRequestProcessor requestProcessor = new LoggerRequestProcessor();
+
+        this.server.registerProcessor(CommandType.GET_LOG_BYTES_REQUEST, requestProcessor, requestProcessor.getExecutor());
+        this.server.registerProcessor(CommandType.ROLL_VIEW_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
+        this.server.registerProcessor(CommandType.VIEW_WHOLE_LOG_REQUEST, requestProcessor, requestProcessor.getExecutor());
+
         this.server.start();
-        logger.info("logger server started, listening on port : {}" , Constants.RPC_PORT);
-        Runtime.getRuntime().addShutdownHook(new Thread() {
+
+        /**
+         * register hooks, which are called before the process exits
+         */
+        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
-                LoggerServer.this.stop();
+                stop();
             }
-        });
+        }));
     }
 
     /**

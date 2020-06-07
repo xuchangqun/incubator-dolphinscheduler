@@ -47,6 +47,17 @@ public class WorkerConfig {
     @Value("${worker.listen.port: 1234}")
     private int listenPort;
 
+    @Value("${logger.listen.port: 50051}")
+    private int loggerPort;
+
+    public int getLoggerPort() {
+        return loggerPort;
+    }
+
+    public void setLoggerPort(int loggerPort) {
+        this.loggerPort = loggerPort;
+    }
+
     public int getListenPort() {
         return listenPort;
     }
